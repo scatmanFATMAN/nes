@@ -76,6 +76,13 @@
     <IncludePath>$(SolutionDir)..\third-party\libsdl2-2.0.7\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)..\third-party\libsdl2-2.0.7\lib64_release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)..\bin\win64_release\</OutDir>
+    <IntDir>$(SolutionDir)..\obj\win64_release\</IntDir>
+    <TargetName>NES</TargetName>
+    <IncludePath>$(SolutionDir)..\third-party\libsdl2-2.0.7\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)..\third-party\libsdl2-2.0.7\lib64_release;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -94,7 +101,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <DisableSpecificWarnings>4244;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4244;6011;</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -124,11 +131,14 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4244;6011;</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -138,6 +148,7 @@
     <ClCompile Include="main.c" />
     <ClCompile Include="cartridge.c" />
     <ClCompile Include="os.c" />
+    <ClCompile Include="ppu.c" />
     <ClCompile Include="string.c" />
     <ClCompile Include="time.c" />
   </ItemGroup>
@@ -147,6 +158,7 @@
     <ClInclude Include="log.h" />
     <ClInclude Include="cartridge.h" />
     <ClInclude Include="os.h" />
+    <ClInclude Include="ppu.h" />
     <ClInclude Include="string.h" />
     <ClInclude Include="time.h" />
   </ItemGroup>

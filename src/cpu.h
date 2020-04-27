@@ -10,7 +10,6 @@ void cpu_power();
 void cpu_reset();
 void cpu_pause();
 
-void cpu_begin_frame();
-bool cpu_has_more_cycles();
+void cpu_set_nmi();
 
-void cpu_execute();
+void cpu_run_frame();

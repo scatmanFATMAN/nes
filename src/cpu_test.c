@@ -6,6 +6,8 @@
 #include "log.h"
 #include "cpu_test.h"
 
+#define MODULE "CPUT"
+
 typedef struct {
     uint16_t *PC;
     uint8_t *opcode;
@@ -9077,7 +9079,7 @@ cpu_test_load() {
             &cpu_test.PC[i], &cpu_test.opcode[i], &cpu_test.A[i], &cpu_test.X[i], &cpu_test.Y[i], &cpu_test.flags[i], &cpu_test.SP[i], &cpu_test.cycles[i]);
 
         if (ret != 8) {
-            log_err("Failed to read line %u: Only read %d/7 items", i + 1, ret);
+            log_err(MODULE, "Failed to read line %u: Only read %d/7 items", i + 1, ret);
             cpu_test_free();
             cpu_test_init();
             return false;

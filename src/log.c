@@ -13,58 +13,58 @@ typedef struct {
     char error[256];
 } log_t;
 
-static log_t log;
+static log_t logger;
 
 void
 log_init() {
-    memset(&log, 0, sizeof(log));
+    memset(&logger, 0, sizeof(logger));
 
-    log.level = LOG_LEVEL_INFO;
-    log.to_stdout = true;
+    logger.level = LOG_LEVEL_INFO;
+    logger.to_stdout = true;
 }
 
 void
 log_free() {
-    if (log.f != NULL) {
-        fclose(log.f);
+    if (logger.f != NULL) {
+        fclose(logger.f);
     }
 }
 
 void
 log_set_level(log_level_t level) {
-    log.level = level;
+    logger.level = level;
 }
 
 void
 log_set_stdout(bool value) {
-    log.to_stdout = value;
+    logger.to_stdout = value;
 }
 
 void
 log_set_file(const char *file) {
     if (file == NULL) {
-        log.file[0] = '\0';
+        logger.file[0] = '\0';
     }
     else {
-        strlcpy(log.file, file, sizeof(log.file));
+        strlcpy(logger.file, file, sizeof(logger.file));
     }
 }
 
 const char *
 log_get_error() {
-    return log.error;
+    return logger.error;
 }
 
 bool
 log_open() {
-    if (log.f != NULL) {
-        fclose(log.f);
+    if (logger.f != NULL) {
+        fclose(logger.f);
     }
 
-    if (log.file[0] != '\0') {
-        log.f = fopen(log.file, "w");
-        if (log.f == NULL) {
-            strlcpy(log.error, strerror(errno), sizeof(log.error));
+    if (logger.file[0] != '\0') {
+        logger.f = fopen(logger.file, "w");
+        if (logger.f == NULL) {
+            strlcpy(logger.error, strerror(errno), sizeof(logger.error));
             return false;
         }
     }
@@ -74,26 +74,26 @@ log_open() {
 
 void
 log_close() {
-    if (log.f != NULL) {
-        fclose(log.f);
-        log.f = NULL;
+    if (logger.f != NULL) {
+        fclose(logger.f);
+        logger.f = NULL;
     }
 }
 
 void
-log_write(log_level_t level, const char *fmt, ...) {
+log_write(log_level_t level, const char *module, const char *fmt, ...) {
     char time_buf[32], level_abbrev, msg[512];
     struct timespec ts;
     struct tm tm;
     va_list ap;
 
     //make sure we have a place to log
-    if (!log.to_stdout && log.f == NULL) {
+    if (!logger.to_stdout && logger.f == NULL) {
         return;
     }
 
     //make sure our log level passes
-    if (level > log.level) {
+    if (level > logger.level) {
         return;
     }
 
@@ -113,10 +113,10 @@ log_write(log_level_t level, const char *fmt, ...) {
     vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
 
-    if (log.to_stdout) {
-        printf("[%s] %c %s\n", time_buf, level_abbrev, msg);
+    if (logger.to_stdout) {
+        printf("[%s] %c [%-9s] %s\n", time_buf, level_abbrev, module, msg);
     }
-    if (log.f != NULL) {
-        fprintf(log.f, "[%s] %c %s\n", time_buf, level_abbrev, msg);
+    if (logger.f != NULL) {
+        fprintf(logger.f, "[%s] %c [%-9s] %s\n", time_buf, level_abbrev, module, msg);
     }
 }

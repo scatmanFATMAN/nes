@@ -6,16 +6,13 @@
 #include "os.h"
 #include "log.h"
 #include "cartridge.h"
+#include "ppu.h"
 #include "cpu_test.h"
 #include "cpu.h"
 
-//http://www.obelisk.me.uk/6502/reference.html
+//description of opcodes and addressing modes: http://www.obelisk.me.uk/6502/reference.html
 
-//https://github.com/AndreaOrru/LaiNES/blob/master/src/cpu.cpp
-//https://github.com/mathetake/nestake/blob/master/src/cpu.cpp
-
-//testing the CPU:
-//http://www.qmtpro.com/~nes/misc/
+#define MODULE "CPU"
 
 #define CPU_CYCLES_PER_FRAME 29781
 
@@ -86,6 +83,7 @@ typedef struct {
     uint8_t Y;                      //y register
     uint8_t flags;                  //processor flags
     int cycles_left;                //number of cycles left to process the frame
+    bool nmi;
     bool paused;
 } cpu_t;
 
@@ -95,140 +93,73 @@ static cpu_t cpu;
 static const char *
 cpu_instruction_str(cpu_instruction_t instruction) {
     switch (instruction) {
-        case CPU_INSTRUCTION_ADC:
-            return "ADC";
-        case CPU_INSTRUCTION_AND:
-            return "AND";
-        case CPU_INSTRUCTION_ASL:
-            return "ASL";
-        case CPU_INSTRUCTION_BCC:
-            return "BCC";
-        case CPU_INSTRUCTION_BCS:
-            return "BCS";
-        case CPU_INSTRUCTION_BEQ:
-            return "BEQ";
-        case CPU_INSTRUCTION_BIT:
-            return "BIT";
-        case CPU_INSTRUCTION_BMI:
-            return "BMI";
-        case CPU_INSTRUCTION_BNE:
-            return "BNE";
-        case CPU_INSTRUCTION_BPL:
-            return "BPL";
-        case CPU_INSTRUCTION_BRK:
-            return "BRK";
-        case CPU_INSTRUCTION_BVC:
-            return "BVC";
-        case CPU_INSTRUCTION_BVS:
-            return "BVS";
-        case CPU_INSTRUCTION_CLC:
-            return "CLC";
-        case CPU_INSTRUCTION_CLD:
-            return "CLD";
-        case CPU_INSTRUCTION_CLI:
-            return "CLI";
-        case CPU_INSTRUCTION_CLV:
-            return "CLV";
-        case CPU_INSTRUCTION_CMP:
-            return "CMP";
-        case CPU_INSTRUCTION_CPX:
-            return "CPX";
-        case CPU_INSTRUCTION_CPY:
-            return "CPY";
-        case CPU_INSTRUCTION_DCP:
-            return "DCP";
-        case CPU_INSTRUCTION_DEC:
-            return "DEC";
-        case CPU_INSTRUCTION_DEX:
-            return "DEX";
-        case CPU_INSTRUCTION_DEY:
-            return "DEY";
-        case CPU_INSTRUCTION_EOR:
-            return "EOR";
-        case CPU_INSTRUCTION_IGN:
-            return "IGN";
-        case CPU_INSTRUCTION_INC:
-            return "INC";
-        case CPU_INSTRUCTION_INX:
-            return "INX";
-        case CPU_INSTRUCTION_INY:
-            return "INY";
-        case CPU_INSTRUCTION_JMP:
-            return "JMP";
-        case CPU_INSTRUCTION_ISC:
-            return "ISC";
-        case CPU_INSTRUCTION_JSR:
-            return "JSR";
-        case CPU_INSTRUCTION_LAX:
-            return "LAX";
-        case CPU_INSTRUCTION_LDA:
-            return "LDA";
-        case CPU_INSTRUCTION_LDX:
-            return "LDX";
-        case CPU_INSTRUCTION_LDY:
-            return "LDY";
-        case CPU_INSTRUCTION_LSR:
-            return "LSR";
-        case CPU_INSTRUCTION_NOP:
-            return "NOP";
-        case CPU_INSTRUCTION_ORA:
-            return "ORA";
-        case CPU_INSTRUCTION_PHA:
-            return "PHA";
-        case CPU_INSTRUCTION_PHP:
-            return "PHP";
-        case CPU_INSTRUCTION_PLA:
-            return "PLA";
-        case CPU_INSTRUCTION_PLP:
-            return "PLP";
-        case CPU_INSTRUCTION_RLA:
-            return "RLA";
-        case CPU_INSTRUCTION_ROL:
-            return "ROL";
-        case CPU_INSTRUCTION_ROR:
-            return "ROR";
-        case CPU_INSTRUCTION_RRA:
-            return "RRA";
-        case CPU_INSTRUCTION_RTI:
-            return "RTI";
-        case CPU_INSTRUCTION_RTS:
-            return "RTS";
-        case CPU_INSTRUCTION_SAX:
-            return "SAX";
-        case CPU_INSTRUCTION_SBC:
-            return "SBC";
-        case CPU_INSTRUCTION_SEC:
-            return "SEC";
-        case CPU_INSTRUCTION_SED:
-            return "SED";
-        case CPU_INSTRUCTION_SEI:
-            return "SEI";
-        case CPU_INSTRUCTION_SKB:
-            return "SKB";
-        case CPU_INSTRUCTION_SLO:
-            return "SLO";
-        case CPU_INSTRUCTION_SRE:
-            return "SRE";
-        case CPU_INSTRUCTION_STA:
-            return "STA";
-        case CPU_INSTRUCTION_STX:
-            return "STX";
-        case CPU_INSTRUCTION_STY:
-            return "STY";
-        case CPU_INSTRUCTION_TAX:
-            return "TAX";
-        case CPU_INSTRUCTION_TAY:
-            return "TAY";
-        case CPU_INSTRUCTION_TSX:
-            return "TSX";
-        case CPU_INSTRUCTION_TXA:
-            return "TXA";
-        case CPU_INSTRUCTION_TXS:
-            return "TXS";
-        case CPU_INSTRUCTION_TYA:
-            return "TYA";
-        case CPU_INSTRUCTION_INV:
-            break;
+        case CPU_INSTRUCTION_ADC: return "ADC";
+        case CPU_INSTRUCTION_AND: return "AND";
+        case CPU_INSTRUCTION_ASL: return "ASL";
+        case CPU_INSTRUCTION_BCC: return "BCC";
+        case CPU_INSTRUCTION_BCS: return "BCS";
+        case CPU_INSTRUCTION_BEQ: return "BEQ";
+        case CPU_INSTRUCTION_BIT: return "BIT";
+        case CPU_INSTRUCTION_BMI: return "BMI";
+        case CPU_INSTRUCTION_BNE: return "BNE";
+        case CPU_INSTRUCTION_BPL: return "BPL";
+        case CPU_INSTRUCTION_BRK: return "BRK";
+        case CPU_INSTRUCTION_BVC: return "BVC";
+        case CPU_INSTRUCTION_BVS: return "BVS";
+        case CPU_INSTRUCTION_CLC: return "CLC";
+        case CPU_INSTRUCTION_CLD: return "CLD";
+        case CPU_INSTRUCTION_CLI: return "CLI";
+        case CPU_INSTRUCTION_CLV: return "CLV";
+        case CPU_INSTRUCTION_CMP: return "CMP";
+        case CPU_INSTRUCTION_CPX: return "CPX";
+        case CPU_INSTRUCTION_CPY: return "CPY";
+        case CPU_INSTRUCTION_DCP: return "DCP";
+        case CPU_INSTRUCTION_DEC: return "DEC";
+        case CPU_INSTRUCTION_DEX: return "DEX";
+        case CPU_INSTRUCTION_DEY: return "DEY";
+        case CPU_INSTRUCTION_EOR: return "EOR";
+        case CPU_INSTRUCTION_IGN: return "IGN";
+        case CPU_INSTRUCTION_INC: return "INC";
+        case CPU_INSTRUCTION_INX: return "INX";
+        case CPU_INSTRUCTION_INY: return "INY";
+        case CPU_INSTRUCTION_JMP: return "JMP";
+        case CPU_INSTRUCTION_ISC: return "ISC";
+        case CPU_INSTRUCTION_JSR: return "JSR";
+        case CPU_INSTRUCTION_LAX: return "LAX";
+        case CPU_INSTRUCTION_LDA: return "LDA";
+        case CPU_INSTRUCTION_LDX: return "LDX";
+        case CPU_INSTRUCTION_LDY: return "LDY";
+        case CPU_INSTRUCTION_LSR: return "LSR";
+        case CPU_INSTRUCTION_NOP: return "NOP";
+        case CPU_INSTRUCTION_ORA: return "ORA";
+        case CPU_INSTRUCTION_PHA: return "PHA";
+        case CPU_INSTRUCTION_PHP: return "PHP";
+        case CPU_INSTRUCTION_PLA: return "PLA";
+        case CPU_INSTRUCTION_PLP: return "PLP";
+        case CPU_INSTRUCTION_RLA: return "RLA";
+        case CPU_INSTRUCTION_ROL: return "ROL";
+        case CPU_INSTRUCTION_ROR: return "ROR";
+        case CPU_INSTRUCTION_RRA: return "RRA";
+        case CPU_INSTRUCTION_RTI: return "RTI";
+        case CPU_INSTRUCTION_RTS: return "RTS";
+        case CPU_INSTRUCTION_SAX: return "SAX";
+        case CPU_INSTRUCTION_SBC: return "SBC";
+        case CPU_INSTRUCTION_SEC: return "SEC";
+        case CPU_INSTRUCTION_SED: return "SED";
+        case CPU_INSTRUCTION_SEI: return "SEI";
+        case CPU_INSTRUCTION_SKB: return "SKB";
+        case CPU_INSTRUCTION_SLO: return "SLO";
+        case CPU_INSTRUCTION_SRE: return "SRE";
+        case CPU_INSTRUCTION_STA: return "STA";
+        case CPU_INSTRUCTION_STX: return "STX";
+        case CPU_INSTRUCTION_STY: return "STY";
+        case CPU_INSTRUCTION_TAX: return "TAX";
+        case CPU_INSTRUCTION_TAY: return "TAY";
+        case CPU_INSTRUCTION_TSX: return "TSX";
+        case CPU_INSTRUCTION_TXA: return "TXA";
+        case CPU_INSTRUCTION_TXS: return "TXS";
+        case CPU_INSTRUCTION_TYA: return "TYA";
+        case CPU_INSTRUCTION_INV: break;
     }
 
     return "INV";
@@ -237,33 +168,20 @@ cpu_instruction_str(cpu_instruction_t instruction) {
 static const char *
 cpu_address_mode_str(cpu_addr_mode_t mode) {
     switch (mode) {
-        case CPU_ADDR_MODE_IMP:
-            return "IMP";
-        case CPU_ADDR_MODE_ACC:
-            return "ACC";
-        case CPU_ADDR_MODE_IMM:
-            return "IMM";
-        case CPU_ADDR_MODE_ZPG:
-            return "ZPG";
-        case CPU_ADDR_MODE_ZPX:
-            return "ZPX";
-        case CPU_ADDR_MODE_ZPY:
-            return "ZPY";
-        case CPU_ADDR_MODE_REL:
-            return "REL";
-        case CPU_ADDR_MODE_ABS:
-            return "ABS";
-        case CPU_ADDR_MODE_ABX:
-            return "ABX";
-        case CPU_ADDR_MODE_ABY:
-            return "ABY";
-        case CPU_ADDR_MODE_IND:
-            return "IND";
-        case CPU_ADDR_MODE_IDX:
-            return "IDX";
-        case CPU_ADDR_MODE_IDY:
-            return "IDY";
-        }
+        case CPU_ADDR_MODE_IMP: return "IMP";
+        case CPU_ADDR_MODE_ACC: return "ACC";
+        case CPU_ADDR_MODE_IMM: return "IMM";
+        case CPU_ADDR_MODE_ZPG: return "ZPG";
+        case CPU_ADDR_MODE_ZPX: return "ZPX";
+        case CPU_ADDR_MODE_ZPY: return "ZPY";
+        case CPU_ADDR_MODE_REL: return "REL";
+        case CPU_ADDR_MODE_ABS: return "ABS";
+        case CPU_ADDR_MODE_ABX: return "ABX";
+        case CPU_ADDR_MODE_ABY: return "ABY";
+        case CPU_ADDR_MODE_IND: return "IND";
+        case CPU_ADDR_MODE_IDX: return "IDX";
+        case CPU_ADDR_MODE_IDY: return "IDY";
+    }
 
     return "UNK";
 }
@@ -271,7 +189,7 @@ cpu_address_mode_str(cpu_addr_mode_t mode) {
 static void
 cpu_instruction_map_set(int opcode, cpu_instruction_t instruction, cpu_addr_mode_t mode, void (*func)(cpu_addr_mode_t mode, int cycles), int cycles) {
     if (instruction_map[opcode].instruction != CPU_INSTRUCTION_INV) {
-        log_err("Error mapping opcode 0x%02X: One already exists", opcode);
+        log_err(MODULE, "Error mapping opcode 0x%02X: One already exists", opcode);
         return;
     }
 
@@ -286,11 +204,24 @@ cpu_read(uint16_t address) {
     if (address >= 0x0000 && address <= 0x1FFF) {
         return cpu.memory[address];
     }
+    if (address >= 0x2000 && address <= 0x3FFF) {
+        return ppu_read_register(address % 8);
+    }
+    if (address >= 0x4000 && address <= 0x4013) {
+    }
+    if (address == 0x4014) {
+    }
+    if (address == 0x4015) {
+    }
+    if (address == 0x4016) {
+    }
+    if (address == 0x4017) {
+    }
     if (address >= 0x4018 && address <= 0xFFFF) {
         return cartridge_read(address);
     }
 
-    log_err("Tried to read CPU memory at address 0x%04X, but address range is not supported yet", address);
+    log_err(MODULE, "Tried to read memory at address 0x%04X, but address range is not supported yet", address);
 
     return 0;
 }
@@ -309,8 +240,26 @@ cpu_write(uint16_t address, uint8_t value) {
         cpu.memory[address] = value;
         return;
     }
+    if (address >= 0x2000 && address <= 0x3FFF) {
+        ppu_write_register(address % 8, value);
+        return;
+    }
+    if (address >= 0x4000 && address <= 0x4013) {
+    }
+    if (address == 0x4014) {
+    }
+    if (address == 0x4015) {
+    }
+    if (address == 0x4016) {
+    }
+    if (address == 0x4017) {
+    }
+    if (address >= 0x4018 && address <= 0xFFFF) {
+        cartridge_write(address, value);
+        return;
+    }
 
-    log_err("Tried to write CPU memory at address 0x%04X, but address range is not supported yet", address);
+    log_err(MODULE, "Tried to write memory at address 0x%04X, but address range is not supported yet", address);
 }
 
 static void
@@ -357,6 +306,19 @@ cpu_flag_is_set(uint8_t flag) {
 }
 
 static void
+cpu_cycle(int cycles) {
+    int i;
+
+    for (i = 0; i < cycles; i++) {
+        ppu_cycle();
+        ppu_cycle();
+        ppu_cycle();
+
+        --cpu.cycles_left;
+    }
+}
+
+static void
 cpu_interrupt(cpu_interrupt_t type) {
     static uint16_t vector[] = {0xFFFA, 0xFFFC, 0xFFFE, 0xFFFE};
     uint8_t flags;
@@ -385,20 +347,25 @@ cpu_interrupt(cpu_interrupt_t type) {
         cpu.PC = cpu_read_uint16(vector[type], vector[type] + 1);
     }
 
+    if (type == CPU_INTERRUPT_NMI) {
+        cpu.nmi = false;
+    }
+
     //the BRK cycle maintenance is handled in the instructon map function (even though it's the same value)
     if (type != CPU_INTERRUPT_BRK) {
-        cpu.cycles_left -= 7;
+        cpu_cycle(7);
     }
-}
-
-static bool
-cpu_page_cross(uint16_t address, uint8_t offset) {
-    return ((address + offset) & 0xFF00) != (address & 0xFF00);
 }
 
 static bool
 cpu_page_cross2(uint16_t address1, uint16_t address2) {
     return (address1 & 0xFF00) != (address2 & 0xFF00);
+}
+
+//only supports going forward
+static bool
+cpu_page_cross(uint16_t address, uint8_t offset) {
+    return cpu_page_cross2(address, address + offset);
 }
 
 static uint16_t
@@ -493,7 +460,7 @@ cpu_read_address(cpu_addr_mode_t mode, bool *page_crossed) {
             address = (cpu_read(cpu.PC++) + cpu.Y) & 0xFF;
             break;
         default:
-            log_err("Unhandled addressing mode %d", mode);
+            log_err(MODULE, "Unhandled addressing mode %d", mode);
             break;
     }
 
@@ -527,9 +494,9 @@ cpu_execute_adc_sbc(cpu_addr_mode_t mode, int cycles, bool subtract) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -553,9 +520,9 @@ cpu_execute_bitwise(uint8_t value, int cycles, bool page_crossed) {
     cpu_flag_set(CPU_FLAG_ZERO, value == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, value & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -618,9 +585,9 @@ cpu_execute_shift(cpu_addr_mode_t mode, int cycles, bool left) {
     cpu_flag_set(CPU_FLAG_ZERO, value == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, value & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -655,17 +622,17 @@ cpu_execute_branch(cpu_addr_mode_t mode, int cycles, uint8_t flag, bool flag_val
     if (cpu_flag_is_set(flag) == flag_value) {
         value = cpu_read(address);
 
-        --cpu.cycles_left;
+        cpu_cycle(1);
 
         //this page check has to support going backwards!!
         if (cpu_page_cross2(cpu.PC, cpu.PC + value)) {
-            --cpu.cycles_left;
+            cpu_cycle(1);
         }
 
         cpu.PC += value;
     }
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //branch if carry clear
@@ -730,7 +697,7 @@ cpu_execute_bit(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_OVERFLOW, value & 0x40);
     cpu_flag_set(CPU_FLAG_NEGATIVE, value & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //force interrupt
@@ -740,35 +707,35 @@ cpu_execute_brk(cpu_addr_mode_t mode, int cycles) {
 
     cpu_flag_set(CPU_FLAG_BREAK_COMMAND, true);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //clear carry flag
 static void
 cpu_execute_clc(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_CARRY, false);
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //clear decimal mode
 static void
 cpu_execute_cld(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_DECIMAL_MODE, false);
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //clear interrupt disable
 static void
 cpu_execute_cli(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_INTERRUPT_DISABLE, false);
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //clear overflow flag
 static void
 cpu_execute_clv(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_OVERFLOW, false);
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //compare (cmp)
@@ -787,9 +754,9 @@ cpu_execute_compare(cpu_addr_mode_t mode, int cycles, uint8_t value_compare) {
     cpu_flag_set(CPU_FLAG_ZERO, value_compare == value);
     cpu_flag_set(CPU_FLAG_NEGATIVE, (value_compare - value) & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -827,7 +794,7 @@ cpu_execute_dcp(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == value);
     cpu_flag_set(CPU_FLAG_NEGATIVE, (cpu.A - value) & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //ignore value
@@ -839,9 +806,9 @@ cpu_execute_ign(cpu_addr_mode_t mode, int cycles) {
     address = cpu_read_address(mode, &page_crossed);
     cpu_read(address);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -873,9 +840,9 @@ cpu_execute_inc_dec(cpu_addr_mode_t mode, int cycles, uint8_t *register_value, b
     cpu_flag_set(CPU_FLAG_ZERO, value == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, value & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -947,10 +914,10 @@ cpu_execute_isc(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
         //TODO: don't care about page crossing?
-        //--cpu.cycles_left;
+        //cpu_cycle(1);
     }
 }
 
@@ -959,7 +926,7 @@ static void
 cpu_execute_jmp(cpu_addr_mode_t mode, int cycles) {
     cpu.PC = cpu_read_address(mode, NULL);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //jump to subroutine
@@ -969,7 +936,7 @@ cpu_execute_jsr(cpu_addr_mode_t mode, int cycles) {
 
     cpu.PC = cpu_read_address(mode, NULL);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //load accumulator and X in one instruction
@@ -984,9 +951,9 @@ cpu_execute_lax(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -1004,9 +971,9 @@ cpu_execute_load(cpu_addr_mode_t mode, int cycles, uint8_t *reg) {
     cpu_flag_set(CPU_FLAG_ZERO, *reg == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, *reg & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -1031,7 +998,7 @@ cpu_execute_ldy(cpu_addr_mode_t mode, int cycles) {
 //no operation
 static void
 cpu_execute_nop(cpu_addr_mode_t mode, int cycles) {
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //push accumulator
@@ -1039,7 +1006,7 @@ static void
 cpu_execute_pha(cpu_addr_mode_t mode, int cycles) {
     cpu_stack_push(cpu.A);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //push processor status
@@ -1048,7 +1015,7 @@ cpu_execute_php(cpu_addr_mode_t mode, int cycles) {
     //this flag aways get set, and don't modify the original
     cpu_stack_push(cpu.flags | CPU_FLAG_BREAK_COMMAND);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //pull accumulator
@@ -1059,7 +1026,7 @@ cpu_execute_pla(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //pull processor status
@@ -1075,7 +1042,7 @@ cpu_execute_plp(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_OVERFLOW, flags & CPU_FLAG_OVERFLOW);
     cpu_flag_set(CPU_FLAG_NEGATIVE, flags & CPU_FLAG_NEGATIVE);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //ROL + AND
@@ -1106,9 +1073,9 @@ cpu_execute_rla(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        //--cpu.cycles_left;
+        //cpu_cycle(1);
         //TODO: ignore page crossing?
     }
 }
@@ -1147,9 +1114,9 @@ cpu_execute_rotate(cpu_addr_mode_t mode, int cycles, bool left) {
     cpu_flag_set(CPU_FLAG_ZERO, value == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, value & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -1203,9 +1170,9 @@ cpu_execute_rra(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
     
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        //--cpu.cycles_left;
+        //cpu_cycle(1);
         //TODO: is this ignored?
     }
 }
@@ -1225,7 +1192,7 @@ cpu_execute_rti(cpu_addr_mode_t mode, int cycles) {
 
     cpu.PC = cpu_stack_pop_uint16();
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //return from subroutine
@@ -1233,7 +1200,7 @@ static void
 cpu_execute_rts(cpu_addr_mode_t mode, int cycles) {
     cpu.PC = cpu_stack_pop_uint16() + 1;
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //bitwise AND of A and X (AND + STX)
@@ -1245,9 +1212,9 @@ cpu_execute_sax(cpu_addr_mode_t mode, int cycles) {
     address = cpu_read_address(mode, &page_crossed);
     cpu_write(address, cpu.A & cpu.X);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -1256,7 +1223,7 @@ static void
 cpu_execute_sec(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_CARRY, true);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //set decimal flag
@@ -1264,7 +1231,7 @@ static void
 cpu_execute_sed(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_DECIMAL_MODE, true);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //set interrupt disable
@@ -1272,7 +1239,7 @@ static void
 cpu_execute_sei(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_INTERRUPT_DISABLE, true);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //skb??
@@ -1284,9 +1251,9 @@ cpu_execute_skb(cpu_addr_mode_t mode, int cycles) {
     address = cpu_read_address(mode, &page_crossed);
     cpu_read(address);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        --cpu.cycles_left;
+        cpu_cycle(1);
     }
 }
 
@@ -1313,9 +1280,9 @@ cpu_execute_slo(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        //--cpu.cycles_left;
+        //cpu_cycle(1);
         //TODO: ignore page crossing?
     }
 }
@@ -1343,9 +1310,9 @@ cpu_execute_sre(cpu_addr_mode_t mode, int cycles) {
     cpu_flag_set(CPU_FLAG_ZERO, cpu.A == 0);
     cpu_flag_set(CPU_FLAG_NEGATIVE, cpu.A & 0x80);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
     if (page_crossed) {
-        //--cpu.cycles_left;
+        //cpu_cycle(1);
         //TODO: ignore page crossing?
     }
 }
@@ -1360,7 +1327,7 @@ cpu_execute_store(cpu_addr_mode_t mode, int cycles, uint8_t value) {
     address = cpu_read_address(mode, NULL);
     cpu_write(address, value);
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //store accumulator
@@ -1397,7 +1364,7 @@ cpu_execute_transfer(cpu_addr_mode_t mode, int cycles, uint8_t from, uint8_t *to
         cpu_flag_set(CPU_FLAG_NEGATIVE, *to & 0x80);
     }
 
-    cpu.cycles_left -= cycles;
+    cpu_cycle(cycles);
 }
 
 //transfer accumulator to x
@@ -1771,63 +1738,66 @@ cpu_pause() {
     cpu.paused = !cpu.paused;
 }
 
-bool
-cpu_has_more_cycles() {
-    if (cpu.cycles_left > 0) {
-        return true;
-    }
-
-    cpu.cycles_left = CPU_CYCLES_PER_FRAME;
-    return false;
+void
+cpu_set_nmi() {
+    cpu.nmi = true;
 }
 
 void
-cpu_execute() {
+cpu_run_frame() {
     cpu_instruction_map_t *map;
     uint8_t opcode;
 
-    if (cartridge_is_nes_test()) {
-        if (CPU_CYCLES_PER_FRAME - cpu.cycles_left >= 26554) {
-            printf("CPU test passed!\n");
+    cpu.cycles_left += CPU_CYCLES_PER_FRAME;
+
+    while (cpu.cycles_left > 0) {
+        if (cpu.nmi) {
+            cpu_interrupt(CPU_INTERRUPT_NMI);
+        }
+
+        if (cartridge_is_nes_test()) {
+            if (CPU_CYCLES_PER_FRAME - cpu.cycles_left >= 26554) {
+                printf("CPU test passed!\n");
+                fflush(stdout);
+                fgetc(stdin);
+                exit(1);
+            }
+        }
+
+        if (cartridge_is_nes_test()) {
+            printf("%04X  ", cpu.PC);
+        }
+
+        opcode = cpu_read(cpu.PC++);
+        map = &instruction_map[opcode];
+
+        if (cartridge_is_nes_test()) {
+            printf("%02X (%s-%s): ", opcode, cpu_instruction_str(map->instruction), cpu_address_mode_str(map->mode));
+            printf("A: %02X  X: %02X  Y: %02X  SP: %02X  Cycles: %d  ", cpu.A, cpu.X, cpu.Y, cpu.SP, CPU_CYCLES_PER_FRAME - cpu.cycles_left);
+            printf("Flags: %02X ", cpu.flags);
+            printf("C[%d] ", cpu_flag_is_set(CPU_FLAG_CARRY) ? 1 : 0);
+            printf("Z[%d] ", cpu_flag_is_set(CPU_FLAG_ZERO) ? 1 : 0);
+            printf("I[%d] ", cpu_flag_is_set(CPU_FLAG_INTERRUPT_DISABLE) ? 1 : 0);
+            printf("B[%d] ", cpu_flag_is_set(CPU_FLAG_BREAK_COMMAND) ? 1 : 0);
+            printf("U[%d] ", cpu_flag_is_set(CPU_FLAG_UNUSED) ? 1 : 0);
+            printf("V[%d] ", cpu_flag_is_set(CPU_FLAG_OVERFLOW) ? 1 : 0);
+            printf("N[%d]\n", cpu_flag_is_set(CPU_FLAG_NEGATIVE) ? 1 : 0);
+
+            if (!cpu_test_check(cpu.PC - 1, opcode, cpu.A, cpu.X, cpu.Y, cpu.SP, cpu.flags, CPU_CYCLES_PER_FRAME - cpu.cycles_left)) {
+                fflush(stdout);
+                fgetc(stdin);
+                exit(1);
+            }
+        }
+
+        if (map->instruction == CPU_INSTRUCTION_INV) {
+            log_err(MODULE, "Unhandled opcode %02X", opcode);
             fflush(stdout);
             fgetc(stdin);
             exit(1);
+            return;
         }
+
+        map->func(map->mode, map->cycles);
     }
-
-    if (cartridge_is_nes_test()) {
-        printf("%04X  ", cpu.PC);
-    }
-
-    opcode = cpu_read(cpu.PC++);
-    map = &instruction_map[opcode];
-
-    if (cartridge_is_nes_test()) {
-        printf("%02X (%s-%s): ", opcode, cpu_instruction_str(map->instruction), cpu_address_mode_str(map->mode));
-        printf("A: %02X  X: %02X  Y: %02X  SP: %02X  Cycles: %d  ", cpu.A, cpu.X, cpu.Y, cpu.SP, CPU_CYCLES_PER_FRAME - cpu.cycles_left);
-        printf("Flags: %02X ", cpu.flags);
-        printf("C[%d] ", cpu_flag_is_set(CPU_FLAG_CARRY) ? 1 : 0);
-        printf("Z[%d] ", cpu_flag_is_set(CPU_FLAG_ZERO) ? 1 : 0);
-        printf("I[%d] ", cpu_flag_is_set(CPU_FLAG_INTERRUPT_DISABLE) ? 1 : 0);
-        printf("B[%d] ", cpu_flag_is_set(CPU_FLAG_BREAK_COMMAND) ? 1 : 0);
-        printf("U[%d] ", cpu_flag_is_set(CPU_FLAG_UNUSED) ? 1 : 0);
-        printf("V[%d] ", cpu_flag_is_set(CPU_FLAG_OVERFLOW) ? 1 : 0);
-        printf("N[%d]\n", cpu_flag_is_set(CPU_FLAG_NEGATIVE) ? 1 : 0);
-
-        if (!cpu_test_check(cpu.PC - 1, opcode, cpu.A, cpu.X, cpu.Y, cpu.SP, cpu.flags, CPU_CYCLES_PER_FRAME - cpu.cycles_left)) {
-            fflush(stdout);
-            fgetc(stdin);
-            exit(1);
-        }
-    }
-
-    if (map->instruction == CPU_INSTRUCTION_INV) {
-        log_err("Unhandled opcode %02X", opcode);
-        fflush(stdout);
-        fgetc(stdin);
-        exit(1);
-        return;
-    }
-
-    map->func(map->mode, map->cycles);
 }

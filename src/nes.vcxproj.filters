@@ -35,6 +35,9 @@
     <ClCompile Include="cpu_test.c">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="ppu.c">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="log.h">
@@ -56,6 +59,9 @@
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="cpu_test.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="ppu.h">
       <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>
