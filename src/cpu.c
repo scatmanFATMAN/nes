@@ -84,6 +84,7 @@ typedef struct {
     uint8_t flags;                  //processor flags
     int cycles_left;                //number of cycles left to process the frame
     bool nmi;
+    bool irq;
     bool paused;
 } cpu_t;
 
@@ -208,20 +209,30 @@ cpu_read(uint16_t address) {
         return ppu_read_register(address % 8);
     }
     if (address >= 0x4000 && address <= 0x4013) {
+        //apu
+        return 0;
     }
     if (address == 0x4014) {
+        log_warn(MODULE, "DMA READ?");
+        return 0;
     }
     if (address == 0x4015) {
+        //apu
+        return 0;
     }
     if (address == 0x4016) {
+        //joypad
+        return 0;
     }
     if (address == 0x4017) {
+        //apu
+        return 0;
     }
     if (address >= 0x4018 && address <= 0xFFFF) {
         return cartridge_read(address);
     }
 
-    log_err(MODULE, "Tried to read memory at address 0x%04X, but address range is not supported yet", address);
+    log_err(MODULE, "Tried to read memory at invalid address 0x%04X", address);
 
     return 0;
 }
@@ -236,6 +247,8 @@ cpu_read_uint16(uint16_t address1, uint16_t address2) {
 
 static void
 cpu_write(uint16_t address, uint8_t value) {
+    int i;
+
     if (address >= 0x0000 && address <= 0x1FFF) {
         cpu.memory[address] = value;
         return;
@@ -245,21 +258,35 @@ cpu_write(uint16_t address, uint8_t value) {
         return;
     }
     if (address >= 0x4000 && address <= 0x4013) {
+        //apu
+        return;
     }
     if (address == 0x4014) {
+        //DMA OAM
+        for (i = 0; i < 256; i++) {
+            cpu_write(0x2014, cpu_read(value * 0x100 + i));
+        }
+
+        return;
     }
     if (address == 0x4015) {
+        //apu
+        return;
     }
     if (address == 0x4016) {
+        //joypad
+        return;
     }
     if (address == 0x4017) {
+        //apu
+        return;
     }
     if (address >= 0x4018 && address <= 0xFFFF) {
         cartridge_write(address, value);
         return;
     }
 
-    log_err(MODULE, "Tried to write memory at address 0x%04X, but address range is not supported yet", address);
+    log_err(MODULE, "Tried to write memory at invalid address 0x%04X", address);
 }
 
 static void
@@ -1721,8 +1748,6 @@ void
 cpu_reset() {
     memset(&cpu, 0, sizeof(cpu));
 
-    cpu.cycles_left = CPU_CYCLES_PER_FRAME;
-
     cpu_flag_set(CPU_FLAG_UNUSED, true);
 
     cpu_interrupt(CPU_INTERRUPT_RESET);
@@ -1741,6 +1766,11 @@ cpu_pause() {
 void
 cpu_set_nmi() {
     cpu.nmi = true;
+}
+
+void
+cpu_set_irq() {
+    cpu.irq = true;
 }
 
 void
@@ -1788,6 +1818,13 @@ cpu_run_frame() {
                 fgetc(stdin);
                 exit(1);
             }
+        }
+
+        if (cpu.nmi) {
+            cpu_interrupt(CPU_INTERRUPT_NMI);
+        }
+        else if (cpu.irq && !cpu_flag_is_set(CPU_FLAG_INTERRUPT_DISABLE)) {
+            cpu_interrupt(CPU_INTERRUPT_IRQ);
         }
 
         if (map->instruction == CPU_INSTRUCTION_INV) {

@@ -11,5 +11,6 @@ void cpu_reset();
 void cpu_pause();
 
 void cpu_set_nmi();
+void cpu_set_irq();
 
 void cpu_run_frame();

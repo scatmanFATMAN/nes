@@ -12,6 +12,8 @@ typedef enum {
 void ppu_init();
 void ppu_free();
 
+void ppu_reset();
+
 void ppu_set_texture(SDL_Texture *texture);
 void ppu_set_mirroring(ppu_mirroring_t mirroring);
 

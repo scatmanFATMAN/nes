@@ -139,6 +139,13 @@ ppu_free() {
 }
 
 void
+ppu_reset() {
+    memset(&ppu, 0, sizeof(ppu));
+
+    memset(ppu.ci, 0xFF, sizeof(ppu.ci));
+}
+
+void
 ppu_set_texture(SDL_Texture *texture) {
     ppu.texture = texture;
 }
@@ -146,18 +153,6 @@ ppu_set_texture(SDL_Texture *texture) {
 void
 ppu_set_mirroring(ppu_mirroring_t mirroring) {
     ppu.mirroring = mirroring;
-
-    switch (mirroring) {
-        case PPU_MIRRORING_VERTICAL:
-            log_debug(MODULE, "Using vertical mirroring");
-            break;
-        case PPU_MIRRORING_HORIZONTAL:
-            log_debug(MODULE, "Using horizontal mirroring");
-            break;
-        case PPU_MIRRORING_NONE:
-            log_debug(MODULE, "Not using mirroring");
-            break;
-    }
 }
 
 static uint16_t
@@ -186,7 +181,7 @@ at_address() {
 }
 static uint16_t
 bg_address() {
-    return (ppu.control.background_pattern_table * 0x1000) + (ppu.v_address.nametable * 16) + ppu.v_address.fine_y;
+    return (ppu.control.background_pattern_table * 0x1000) + (ppu.latch_nametable * 16) + ppu.v_address.fine_y;
 }
 
 static uint8_t
@@ -194,11 +189,11 @@ ppu_read(uint16_t address) {
     if (address >= 0x0000 && address <= 0x1FFF) {
         return cartridge_read_chr(address);
     }
-    else if (address >= 0x2000 && address <= 0x3FFF) {
+    else if (address >= 0x2000 && address <= 0x3EFF) {
         return ppu.ci[ppu_nametable_mirroring_address(address)];
     }
-    else if (address >= 0x3FFF && address <= 0x3FFF) {
-        if ((address & 0x31) == 0x10) {
+    else if (address >= 0x3F00 && address <= 0x3FFF) {
+        if ((address & 0x13) == 0x10) {
             address &= ~0x10;
         }
 
@@ -214,18 +209,19 @@ ppu_write(uint16_t address, uint8_t value) {
     if (address >= 0x0000 && address <= 0x1FFF) {
         cartridge_write_chr(address, value);
     }
-    else if (address >= 0x2000 && address <= 0x3FFF) {
+    else if (address >= 0x2000 && address <= 0x3EFF) {
         ppu.ci[ppu_nametable_mirroring_address(address)] = value;
     }
-    else if (address >= 0x3FFF && address <= 0x3FFF) {
-        if ((address & 0x31) == 0x10) {
+    else if (address >= 0x3F00 && address <= 0x3FFF) {
+        if ((address & 0x13) == 0x10) {
             address &= ~0x10;
         }
 
         ppu.cg[address & 0x1F] = value;
     }
-
-    log_err(MODULE, "Attempt to write at invalid address 0x%04X", address);
+    else {
+        log_err(MODULE, "Attempt to write at invalid address 0x%04X", address);
+    }
 }
 
 static uint8_t res = 0;
@@ -236,9 +232,9 @@ uint8_t
 ppu_read_register(uint16_t index) {
     switch (index) {
         case 2:
-            ppu.status.vblank = 0;
-            latch = false;
             res = (res & 0x1F) | ppu.status.value;
+            latch = false;
+            ppu.status.vblank = 0;
             break;
         case 4:
             res = ppu.oam[ppu.oam_address];
@@ -263,6 +259,8 @@ ppu_read_register(uint16_t index) {
 
 void
 ppu_write_register(uint16_t index, uint8_t value) {
+    res = value;
+
     switch (index) {
         case 0:
             ppu.control.value = value;
@@ -278,25 +276,25 @@ ppu_write_register(uint16_t index, uint8_t value) {
             ppu.oam[ppu.oam_address++] = value;
             break;
         case 5:
-            if (latch) {
-                ppu.t_address.fine_y = value & 7;
-                ppu.t_address.coarse_y = value >> 3;
-            }
-            else {
+            if (!latch) {
                 ppu.fine_x = value & 7;
                 ppu.t_address.coarse_x = value >> 3;
+            }
+            else {
+                ppu.t_address.fine_y = value & 7;
+                ppu.t_address.coarse_y = value >> 3;
             }
 
             latch = !latch;
 
             break;
         case 6:
-            if (latch) {
-                ppu.t_address.low = value;
-                ppu.v_address.r = ppu.t_address.r;
+            if (!latch) {
+                ppu.t_address.high = value & 0x3F;
             }
             else {
-                ppu.t_address.high = value & 0x3F;
+                ppu.t_address.low = value;
+                ppu.v_address.r = ppu.t_address.r;
             }
 
             latch = !latch;
@@ -327,7 +325,7 @@ ppu_clear_oam2() {
 static void
 ppu_reload_shift() {
     ppu.bg_shift_low = (ppu.bg_shift_low & 0xFF00) | ppu.latch_background_low;
-    ppu.bg_shift_high = (ppu.bg_shift_high & 0xFF00) | ppu.latch_background_low;
+    ppu.bg_shift_high = (ppu.bg_shift_high & 0xFF00) | ppu.latch_background_high;
 
     ppu.at_latch_low = (ppu.latch_at & 1);
     ppu.at_shift_high = (ppu.latch_at & 2);
@@ -402,13 +400,13 @@ ppu_evaluate_sprites() {
         line -= ppu.oam[i * 4];
 
         if (line >= 0 && line < ppu_sprite_height()) {
-            ppu.sprites2[count].id = i;
-            ppu.sprites2[count].y = ppu.oam[i * 4 + 0];
+            ppu.sprites2[count].id    = i;
+            ppu.sprites2[count].y     = ppu.oam[i * 4 + 0];
             ppu.sprites2[count].title = ppu.oam[i * 4 + 1];
-            ppu.sprites2[count].attr = ppu.oam[i * 4 + 2];
-            ppu.sprites2[count].x = ppu.oam[i * 4 + 3];
+            ppu.sprites2[count].attr  = ppu.oam[i * 4 + 2];
+            ppu.sprites2[count].x     = ppu.oam[i * 4 + 3];
 
-            if (++count > 8) {
+            if (++count >= PPU_SPRITES) {
                 ppu.status.sprite_overflow = 1;
                 break;
             }
@@ -419,7 +417,8 @@ ppu_evaluate_sprites() {
 static void
 ppu_load_sprites() {
     uint16_t address;
-    int i, y;
+    int i;
+    unsigned int sprite_y;
 
     for (i = 0; i < PPU_SPRITES; i++) {
         memcpy(&ppu.sprites[i], &ppu.sprites2[i], sizeof(ppu.sprites[i]));
@@ -431,13 +430,13 @@ ppu_load_sprites() {
             address = (ppu.control.sprite_pattern_table * 0x1000) + (ppu.sprites[i].title * 16);
         }
 
-        y = (ppu.scanline - ppu.sprites[i].y) % ppu_sprite_height();
+        sprite_y = (ppu.scanline - ppu.sprites[i].y) % ppu_sprite_height();
 
         if (ppu.sprites[i].attr & 0x80) {
-            y ^= ppu_sprite_height() - 1;
+            sprite_y ^= ppu_sprite_height() - 1;
         }
 
-        address += y + (y & 8);
+        address += sprite_y + (sprite_y & 8);
 
         ppu.sprites[i].data_low = ppu_read(address);
         ppu.sprites[i].data_high = ppu_read(address + 8);
@@ -449,6 +448,7 @@ ppu_process_pixel() {
     uint8_t palette = 0, obj_palette = 0, sprite_palette;
     int i, x;
     bool obj_priority;
+    unsigned int sprite_x;
 
     x = ppu.dot - 2;
 
@@ -468,19 +468,19 @@ ppu_process_pixel() {
                     continue;
                 }
 
-                x = x - ppu.sprites[i].x;
+                sprite_x = x - ppu.sprites[i].x;
 
-                if (x >= 8) {
+                if (sprite_x >= 8) {
                     //out of range
                     continue;
                 }
 
                 if (ppu.sprites[i].attr & 0x40) {
                     //horizontal flip
-                    x ^= 7;
+                    sprite_x ^= 7;
                 }
 
-                sprite_palette = (NTH_BIT(ppu.sprites[i].data_high, 7 - x) << 1) || NTH_BIT(ppu.sprites[i].data_low, 7 - x);
+                sprite_palette = (NTH_BIT(ppu.sprites[i].data_high, 7 - sprite_x) << 1) || NTH_BIT(ppu.sprites[i].data_low, 7 - sprite_x);
 
                 if (sprite_palette == 0) {
                     //transparent
@@ -507,13 +507,13 @@ ppu_process_pixel() {
     ppu.bg_shift_low <<= 1;
     ppu.bg_shift_high <<= 1;
 
-    ppu.at_shift_high = (ppu.at_shift_low << 1) | ppu.at_latch_low;
+    ppu.at_shift_low = (ppu.at_shift_low << 1) | ppu.at_latch_low;
     ppu.at_shift_high = (ppu.at_shift_high << 1) | ppu.at_latch_high;
 }
 
 static void
 ppu_cycle_execute(ppu_scanline_type_t type) {
-    uint16_t address = 0;
+    static uint16_t address = 0;
     int ret;
 
     switch (type) {
@@ -535,11 +535,12 @@ ppu_cycle_execute(ppu_scanline_type_t type) {
             break;
         case PPU_SCANLINE_TYPE_PRE:
         case PPU_SCANLINE_TYPE_VISIBLE:
+            //sprites
             if (ppu.dot == 1) {
                ppu_clear_oam2();
 
                 if (type == PPU_SCANLINE_TYPE_PRE) {
-                    ppu.status.sprite_overflow = 0;
+                    ppu.status.sprite_overflow = 0; 
                     ppu.status.sprite0_hit = 0;
                 }
             }
@@ -550,6 +551,7 @@ ppu_cycle_execute(ppu_scanline_type_t type) {
                 ppu_load_sprites();
             }
 
+            //background
             if (ppu.dot == 1) {
                 address = ppu_nametable_address();
                 if (type == PPU_SCANLINE_TYPE_PRE) {

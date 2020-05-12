@@ -63,11 +63,15 @@ main(int argc, char **arv) {
     }
 
     if (success) {
-        //success = cartridge_load("../../roms/nestest.nes");
+        //success = cartridge_load("../../roms/test/nestest.nes");
+        //success = cartridge_load("../../roms/test/ppu_palette_ram.nes");
         success = cartridge_load("../../roms/donkey_kong.nes");
         //success = cartridge_load("../../roms/scanline/scanline.nes");
+        //success = cartridge_load("../../roms/legend_of_zelda.nes");
+        //success = cartridge_load("../../roms/super_mario_bros3.nes");
         if (success) {
             cpu_power();
+            ppu_reset();
         }
     }
 
